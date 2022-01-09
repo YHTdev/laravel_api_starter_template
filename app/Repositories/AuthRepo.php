@@ -3,8 +3,13 @@
 namespace App\Repositories;
 
 use App\Models\User;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
+
+
 use Illuminate\Support\Facades\Validator;
 use JasonGuru\LaravelMakeRepository\Repository\BaseRepository;
 //use Your Model
@@ -115,18 +120,32 @@ class AuthRepo extends BaseRepository
         try {
             $validator = Validator::make($request->all(), [
                 'password' => 'required|min:8|confirmed',
+                'password_confirmation' => 'required',
+                'token' => 'required',
+                'email' => 'required|email|exists:users,email'
 
             ]);
             if ($validator->fails()) {
                 $returnObj['statusCode'] = 422;
                 $returnObj['errors'] = $validator->errors();
             } else {
-                $user =  $request->user();
-                $user->password = $request->password;
-                $result = $user->save();
-                $returnObj['statusCode'] = 200;
-                $returnObj['message'] = 'Password reset successfully!';
-                $returnObj['user'] = $result;
+
+                $updatePassword = DB::table('password_resets')->where([
+                    'email' => $request->email,
+                    'token' => $request->token
+                ]);
+
+                if ($updatePassword) {
+                    $user = User::where('email', $request->email)->update([
+                        'password' => Hash::make($request->password)
+                    ]);
+                    $returnObj['statusCode'] = 200;
+                    $returnObj['message'] = 'Your password updated successfully';
+                    $returnObj['user'] = $user;
+                } else {
+                    $returnObj['statusCode'] = 422;
+                    $returnObj['message'] = 'Invalid token';
+                }
             }
         } catch (\Throwable $th) {
             $returnObj['statusCode'] = 500;
@@ -147,10 +166,25 @@ class AuthRepo extends BaseRepository
                 $returnObj['statusCode'] = 422;
                 $returnObj['errors'] = $validator->errors();
             } else {
-                $response = Password::sendResetLink($request->email);
-                $message = $response === Password::RESET_LINK_SENT ? 'Email sent successfully!' : 'Something wrong!';
-                $returnObj['statusCode'] = 200;
-                $returnObj['message'] = $message;
+                $token = Str::random(6);
+                DB::table('password_resets')->insert([
+                    'email' => $request->email,
+
+                    'token' => $token,
+
+                    'created_at' => Carbon::now()
+                ]);
+                Mail::send('email.forgetPassword', ['token' => $token], function ($message) use ($request) {
+                    $message->to($request->email);
+                    $message->subject('Reset Password');
+                });
+                if (Mail::failures()) {
+                    $returnObj['message'] = 'Fail';
+                    $returnObj['statusCode'] = 422;
+                } else {
+                    $returnObj['message'] = 'Success';
+                    $returnObj['statusCode'] = 200;
+                }
             }
         } catch (\Throwable $th) {
             $returnObj['statusCode'] = 500;
