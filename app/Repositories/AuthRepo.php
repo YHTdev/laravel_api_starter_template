@@ -44,12 +44,13 @@ class AuthRepo extends BaseRepository
                         $returnObj['accessToken'] = $accessToken;
                         $returnObj['statusCode'] = 200;
                     } else {
+
                         $returnObj['statusCode'] = 422;
-                        $returnObj['message'] = `User password doesn't match!`;
+                        $returnObj['message'] = 'User password does not match!';
                     }
                 } else {
                     $returnObj['statusCode'] = 422;
-                    $returnObj['message'] = `User Email doesn't exist!`;
+                    $returnObj['message'] = 'User Email does not exist!';
                 }
             }
         } catch (\Throwable $th) {
@@ -140,14 +141,14 @@ class AuthRepo extends BaseRepository
         $returnObj['statusCode'] = 500;
         try {
             $validator = Validator::make($request->all(), [
-                'email' => 'required|email'
+                'email' => 'required|email|exists:users,email'
             ]);
             if ($validator->fails()) {
                 $returnObj['statusCode'] = 422;
                 $returnObj['errors'] = $validator->errors();
             } else {
                 $response = Password::sendResetLink($request->email);
-                $message = $response === Password::RESET_LINK_SENT ? 'Email sent successfully!' : 'something wrong!';
+                $message = $response === Password::RESET_LINK_SENT ? 'Email sent successfully!' : 'Something wrong!';
                 $returnObj['statusCode'] = 200;
                 $returnObj['message'] = $message;
             }
@@ -165,6 +166,8 @@ class AuthRepo extends BaseRepository
         $returnObj = array();
         $returnObj['statusCode'] = 500;
         try {
+            $returnObj['user'] = $request->user();
+            $returnObj['statusCode'] = 200;
         } catch (\Throwable $th) {
             $returnObj['statusCode'] = 500;
             $returnObj['message'] = $th->getMessage();
@@ -177,6 +180,9 @@ class AuthRepo extends BaseRepository
         $returnObj = array();
         $returnObj['statusCode'] = 500;
         try {
+            $users = User::orderBy('updated_at', 'desc')->paginate($request->limit ?? 10);
+            $returnObj['users'] = $users;
+            $returnObj['statusCode'] = 200;
         } catch (\Throwable $th) {
             $returnObj['statusCode'] = 500;
             $returnObj['message'] = $th->getMessage();
@@ -189,6 +195,24 @@ class AuthRepo extends BaseRepository
         $returnObj = array();
         $returnObj['statusCode'] = 500;
         try {
+            $user = User::findOrFail($id);
+            if ($user) {
+                $validator = Validator::make($request->all(), [
+                    'name' => 'required'
+                ]);
+                if ($validator->fails()) {
+                    $returnObj['statusCode'] = 422;
+                    $returnObj['errors'] = $validator->errors();
+                } else {
+                    $user->name = $request->name;
+                    $user->save();
+                    $returnObj['statusCode'] = 200;
+                    $returnObj['message'] = "Updated successfully";
+                }
+            } else {
+                $returnObj['statusCode'] = 422;
+                $returnObj['message'] = 'User does not exist!';
+            }
         } catch (\Throwable $th) {
             $returnObj['statusCode'] = 500;
             $returnObj['message'] = $th->getMessage();
@@ -201,6 +225,15 @@ class AuthRepo extends BaseRepository
         $returnObj = array();
         $returnObj['statusCode'] = 500;
         try {
+            $user = User::findOrFail($id);
+            if ($user) {
+                $user->delete();
+                $returnObj['message'] = 'User deleted successfully!';
+                $returnObj['statusCode'] = 200;
+            } else {
+                $returnObj['message'] = 'User does not exist!';
+                $returnObj['statusCode'] = 422;
+            }
         } catch (\Throwable $th) {
             $returnObj['statusCode'] = 500;
             $returnObj['message'] = $th->getMessage();
